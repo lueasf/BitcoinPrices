@@ -93,6 +93,9 @@ train_dataset, valid_dataset, test_dataset = get_datasets(
     tsp, bt_data_resampled, split_config
 )
 
+
+
+
 ### Zero-shot Model
 # On charge le modèle Tiny Time Mixer
 zeroshot_model = TinyTimeMixerForPrediction.from_pretrained("models/zero_shot_model", prediction_filter_length=24)
@@ -160,16 +163,17 @@ def compare_forecast(forecast, date_col, prediction_col, actual_col, hours_out):
 # Valeurs sur un jour sans les NaN
 one_day_pred = compare_forecast(zs_forecast, 'Timestamp', 'Close_prediction', 'Close', 24)
 out = one_day_pred.dropna(subset=['actual', 'pred'])
-out["actual"] = 10 ** out["actual"]
-out["pred"] = 10 ** out["pred"]
 
 # Calcul du RMSE - Root Mean Squared Error
 rmse = '{:.10f}'.format(root_mean_squared_error(out['actual'], out['pred']))
 print(f"RMSE: {rmse}")
 
 # Graphique qui représente les valeurs prédites et les valeurs réelles sur le dataset.
-out.plot(x="Timestamp", y=["pred", "actual"], figsize=(20, 5), title=str(rmse))
+out.plot(x="Timestamp", y=["pred", "actual"], figsize=(20, 5), title=f"RMSE for zero-shot model: {rmse}")
 plt.show()
+
+
+
 
 ### Fine-tuning
 OUT_DIR = ""
@@ -184,7 +188,7 @@ finetune_forecast_args = TrainingArguments(
     learning_rate=learning_rate,  
     num_train_epochs=num_epochs,  
     do_eval=True,  
-    eval_strategy="epoch",  
+    evaluation_strategy="epoch",  
     per_device_train_batch_size=batch_size,  
     per_device_eval_batch_size=batch_size,  
     dataloader_num_workers=8,  
@@ -196,3 +200,58 @@ finetune_forecast_args = TrainingArguments(
     metric_for_best_model="eval_loss",  
     greater_is_better=False,  
 )
+
+# Avant de faire le fine-tuning, on doit charger un modèle pré-entrainé, qui a déjà été entrainé sur des données similaires.
+finetune_forecast_model = TinyTimeMixerForPrediction.from_pretrained("models/finetuned_forecast_model")
+
+# pour empecher le modèle de se sur-entrainer, on utilise un early stopping callback.
+early_stopping_callback = EarlyStoppingCallback(
+    early_stopping_patience=2, # s'arrete après 2 époques sans amélioration
+    early_stopping_threshold=0.001, # minimum requis d'amélioration pour continuer
+)
+
+tracking_callback = TrackingCallback()
+
+optimizer = AdamW(finetune_forecast_model.parameters(), lr=learning_rate)
+scheduler = OneCycleLR(
+    optimizer,
+    learning_rate,
+    epochs=num_epochs,
+    steps_per_epoch=math.ceil(len(train_dataset) / (batch_size)),
+)
+
+finetune_forecast_trainer = Trainer(
+    model=finetune_forecast_model,
+    args=finetune_forecast_args,  
+    train_dataset=train_dataset,
+    eval_dataset=valid_dataset,  
+    callbacks=[early_stopping_callback, tracking_callback],  
+    optimizers=(optimizer, scheduler),  
+)
+
+# finetune_forecast_trainer.train()
+
+### Pipeline de prévision des séries temporelles après le fine-tuning 
+forecast_pipeline = TimeSeriesForecastingPipeline(
+    model=finetune_forecast_model,
+    device="cpu",
+    timestamp_column=timestamp_column,
+    id_columns=[],
+    target_columns=target_columns,
+    observable_columns=observable_columns,
+    freq='h'
+)
+
+# finetune_forecast_trainer.evaluate(tsp.preprocess(bt_data_resampled[test_start_index:test_end_index]))
+
+### Évaluation du modèle fine-tuné
+# On recharge le modèle pré-entrainé, car l'exéc du fine-tuning est longue.
+forecast_finetuned = pd.read_pickle("models/forecast_finetuned.pkl")
+
+forecast_predictions = compare_forecast(forecast_finetuned, "Timestamp", "Close_prediction", "Close", 12)
+forecast_out = forecast_predictions.dropna(subset=["actual", "pred"])
+
+rmse2 = '{:.10f}'.format(root_mean_squared_error(forecast_out['actual'], forecast_out['pred']))
+
+forecast_out.plot(x="Timestamp", y=["pred", "actual"], figsize=(20, 5), title=f"RMSE for fine-tuned model: {rmse2}")
+plt.show()
