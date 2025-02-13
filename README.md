@@ -29,6 +29,9 @@ pip install --upgrade pip
 pip install -r requirements.txt
 deactivate
 ```
+Si quelque chose ne marche pas, il faut aller sur le github de IBM:
+- https://github.com/IBM/tsfm.git et installer tsfm:
+- pip install ".[notebooks]" seaborn==0.13.2
 
 # Dataset
 
@@ -57,5 +60,36 @@ D'abord on va couper le dataset en :
 - Validation set (10%) permet d'ajuster le modèle.
 - Test set (10%)
 
+On utilise la classe **Trainer** de la biblithèque Hugging Face pour évaluer les performances du modèle. Puis on peut calculer le **RMSE** (Root Mean Squared Error) pour évaluer les performances du modèle.
+```
+RMSE = sqrt(1/n * sum((y_true - y_pred)^2))
+```
+Ici il vaut la racine carré de eval_loss ~ 0.064. Ce qui signifie que l'erreur
+moyenne des prédictions est d'environ 6.4 cents.
+
 Puis on fera un **Fine-tuning** pour améliorer les performances.
+
+# TSMF (Time Series Model Framework)
+TSMF est un outil conçu pour préparer les données afin qu'elles soient compatibles avec le modèle TTM (Tiny Time Mixer).
+
+**TimeSeriesPreprocessor (TSP)** est un utilitaire qui prépare les séries temporelles pour le modèle TTM.
+
+On utilise aussi la fonction get_datasets(), qui prends comme paramètres :
+le tsp, le dataset et la config des sous-ensembles (train, val, test).
+
+# Processus de prévisions
+- Le modèle regarde 512 points (t1 à t512)
+- Il prédit les 96 futures valeurs (t513 à t609)
+- Il n'affiche que 24 et les compares avec des vraies données
+- la fenêtre glisse : t2 à t513, t3 à t514, etc.
+- la prévision s'arrête quand on a plus 512 points à regarder.
+
+# Prédictions et comparaisons
+Après avoir fait une prédiction,
+on utilise pandas pour comparer les prédictions avec les vraies valeurs pour la 11ème ligne du dataset. Le modèle est entrainé pour prédire les tendanves générales mais il ne capte pas la volatilité à court terme.
+
+![Forecast](Forecast1.png)
+
+On peut aussi comparer avec une fonction qui permet d'automatiser la comparaison en se
+concentrant sur un nombre d'heure dans le futur.
 
