@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.metrics import mean_squared_error
+from sklearn.metrics import root_mean_squared_error
 
 # TSFM libraries
 from tsfm_public.toolkit.time_series_forecasting_pipeline import TimeSeriesForecastingPipeline
@@ -127,7 +127,7 @@ On obtient des valeurs et des NaN dans la colone close car les vraies valeurs ne
 encore connues, et donc on ne peut pas encore comparer les valeurs prédites avec les valeurs réelles.
 '''
 
-# Comparaison 1
+### Comparaison 1
 fcast_df = pd.DataFrame({
     "pred": zs_forecast.loc[11]['Close_prediction'],  # Predicted values for the next 24 time steps
     "actual": zs_forecast.loc[11]['Close'][:24]       # Actual values for the same time period
@@ -140,10 +140,59 @@ ax.set_ylabel("Close Price")
 ax.set_title("Predicted vs Actual Close Price for Row 11")
 plt.show()
 
-# Comparaison 2
+### Comparaison 2
 def compare_forecast(forecast, date_col, prediction_col, actual_col, hours_out):
     comp = pd.DataFrame()
     comp[date_col] = forecast[date_col]
 
     actual = []
     pred = []
+
+    for i in range(len(forecast)):
+        pred.append(forecast[prediction_col].values[i][hours_out - 1])
+        actual.append(forecast[actual_col].values[i][hours_out -1])
+    
+    comp['actual'] = actual
+    comp['pred'] = pred
+
+    return comp
+
+# Valeurs sur un jour sans les NaN
+one_day_pred = compare_forecast(zs_forecast, 'Timestamp', 'Close_prediction', 'Close', 24)
+out = one_day_pred.dropna(subset=['actual', 'pred'])
+out["actual"] = 10 ** out["actual"]
+out["pred"] = 10 ** out["pred"]
+
+# Calcul du RMSE - Root Mean Squared Error
+rmse = '{:.10f}'.format(root_mean_squared_error(out['actual'], out['pred']))
+print(f"RMSE: {rmse}")
+
+# Graphique qui représente les valeurs prédites et les valeurs réelles sur le dataset.
+out.plot(x="Timestamp", y=["pred", "actual"], figsize=(20, 5), title=str(rmse))
+plt.show()
+
+### Fine-tuning
+OUT_DIR = ""
+
+learning_rate = 0.0001 
+num_epochs = 10  
+batch_size = 32
+ 
+finetune_forecast_args = TrainingArguments(
+    output_dir=os.path.join(OUT_DIR, "output"),  
+    overwrite_output_dir=True,  
+    learning_rate=learning_rate,  
+    num_train_epochs=num_epochs,  
+    do_eval=True,  
+    eval_strategy="epoch",  
+    per_device_train_batch_size=batch_size,  
+    per_device_eval_batch_size=batch_size,  
+    dataloader_num_workers=8,  
+    save_strategy="epoch",  
+    logging_strategy="epoch",  
+    save_total_limit=1,  
+    logging_dir=os.path.join(OUT_DIR, "logs"),  
+    load_best_model_at_end=True,  
+    metric_for_best_model="eval_loss",  
+    greater_is_better=False,  
+)

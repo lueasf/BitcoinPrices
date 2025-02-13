@@ -92,4 +92,10 @@ on utilise pandas pour comparer les prédictions avec les vraies valeurs pour la
 
 On peut aussi comparer avec une fonction qui permet d'automatiser la comparaison en se
 concentrant sur un nombre d'heure dans le futur.
+En prenant 24h on obtient un résultat satisfaisant:
+
+![Comp2](Comp2.png)
+
+# Fine-tuning
+Le fine-tuning est une technique en apprentissage automatique où l'on ajuste un modèle pré-entraîné pour l'adapter à une tâche spécifique.
 
